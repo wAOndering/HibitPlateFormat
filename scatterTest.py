@@ -1,3 +1,21 @@
+'''
+2022-05-19 
+contact: vaissire.t@ufl.edu
+
+This is a set of function to facilitate downstream analysis and vizualization of assays
+performed in a 384 format.
+The format is flexible however some of the function would need to be adapted for that
+especially the get file function
+
+## TODO: try to set this up with input instead or argparse
+## TODO: includes some of the method in Class
+## TODO: integrate some options
+## TODO: comments the code better
+## TODO: update github
+## TODO: can create a more interactive interface with the command prompt
+'''
+
+#### LOAD set of python libraries required for further processing
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -10,84 +28,83 @@ from pathlib import Path
 import argparse
 import sys
 
-## TODO: try to set this up with input instead or argparse
-## TODO: implement csv vs xlsx options 
-## TODO: includes some of the method in Class
-## TODO: integrate some options
-## TODO: comments the code better
-## TODO: update github
-## TODO: can create a more interactive interface with the command prompt
 
-def normalizePlate(dat):
-    '''DEPRECATED DO NOT USE DEPRECATED DO NOT USE DEPRECATED DO NOT USE 
-    DEPRECATED DO NOT USE DEPRECATED DO NOT USE DEPRECATED DO NOT USE 
+
+#### LOAD set of custom functions required for further processing
+def getFile(fileName, dattype):
+    '''
+    Main function initially set up as default by reading the xlsx file
+    which based on pandas version can be a source of error. This has been implemented 
+    
+    Args:
+        fileName (str): name of the file of interest
+        dattype (str): name of data to work on either hibit of ffluc, only serve to label column properly
+        which is important for downstream merge operations 
+
+
+    to work on the csv file format as well.
+    1- format as long format
+    2- get the baseline signal based on DMSO well correpsonding to the frist 2 and last 2 columns of the plate
+    minus the 4 wells 
     '''
 
-    # get the series corresponding to first and last 2 columns 
-    avgSeries = dat.iloc[2:14, np.r_[0:2,22,23]].values.flatten()
-    
-    # takeaway outlier based on the 3 standard deviation
-    avgSeries = avgSeries[np.logical_and((avgSeries>np.mean(avgSeries)-3*np.std(avgSeries)), (avgSeries<np.mean(avgSeries)+3*np.std(avgSeries)))]
-
-    avgDMSO = np.mean(avgSeries)
-
-    datNorm = dat/avgDMSO
-
-    colName = np.repeat(range(12),2)
-    colName = ['col'+str(x) for x in colName]
-
-    datNorm.columns = colName
-    meltDat = datNorm.melt()
-
-    # below 1 correspond to the average as it has been normalized above
-    avgSeriesNorm = datNorm.iloc[2:14, np.r_[0:2,22,23]].values.flatten()
-    
-    # takeaway outlier based on the 3 standard deviation
-    avgSeriesNorm = avgSeriesNorm[np.logical_and((avgSeriesNorm>np.mean(avgSeriesNorm)-3*np.std(avgSeriesNorm)), (avgSeriesNorm<np.mean(avgSeriesNorm)+3*np.std(avgSeriesNorm)))]
-    stdLow = 1-3*np.std(avgSeriesNorm)
-    stdHigh = 1+3*np.std(avgSeriesNorm)
-
-    return meltDat, [stdLow, stdHigh]
-
-def getFile(fileName, dattype):
-
     if fileName.split(os.sep)[-1].split('.')[-1] == 'xlsx':
-        tmp = pd.read_excel(fileName, sheet_name='Results', usecols='F:AC', skiprows=9)
-        plateH = np.shape(tmp)[0]
-        plateW = np.shape(tmp)[1]
-        tmp['row'] = list(string.ascii_uppercase)[:plateH]
+        ## reformat and reshape the data to a long format
+        tmp = pd.read_excel(fx, sheet_name='Results', usecols='F:AC', skiprows=9) # read the excel file based on location on the actual data
+        plateH = np.shape(tmp)[0] # get the format of the plate height and 
+        plateW = np.shape(tmp)[1] # get the format of the plate width
+        tmp['row'] = list(string.ascii_uppercase)[:plateH] # create row labels
         tmpM = tmp.melt('row')
-        tmpM = tmpM.drop(columns = ['variable'])
-        tmpM['col'] = np.repeat(range(plateW),plateH)+1
-        tmpM['sample'] = np.repeat(range(int(plateW/2)),plateH*2)+1
-        tmpM.loc[tmpM['sample'].isin([1,12]),'sample'] ='DMSO'
-        tmpM = tmpM[['row','col','sample','value']]
+        tmpM = tmpM.drop(columns = ['variable']) # remove the variable columns which will be replaced by better formation of the col
+        tmpM['col'] = np.repeat(range(plateW),plateH)+1 # create col labels in python this is +1 as 0 is the start
+    
+    elif fileName.split(os.sep)[-1].split('.')[-1] == 'csv':
+        tmpO = pd.read_csv(fc) #temporary store the csv files prior to resoncstruction
+        tmpM = tmpO['WellPosition'].str.split(':', expand=True)
+        tmpM.columns = ['row', 'col']
+        tmpM['value'] = tmpO['RLU']
+        tmpM['col'] = tmpM['col'].astype(int) # the column type when csv is imported is an object need comversion for porper sorting 
+    
+    # the way the formating is done is when the plate is sorted first by row then by columns'
+    # this is defautl for xlsx but adapted for csv
+    tmpM = tmpM.sort_values(['col','row'])
+    tmpM = tmpM.reset_index(drop=True)
 
-        dmsoCtl = tmpM[(tmpM['sample'].isin(['DMSO'])) & (~tmpM['row'].isin(['A','B','O','P']))]
+    # this line is important as it determines the plate format and assume that the samples are repeated in duplicated columns
+    tmpM['sample'] = np.repeat(range(int(plateW/2)),plateH*2)+1 
 
-        
-        lwr_b = stdDevbound(dmsoCtl['value'])[0]
-        hir_b = stdDevbound(dmsoCtl['value'])[1]
-        dmsoCtlwoOut = dmsoCtl[(dmsoCtl['value']>lwr_b) & (dmsoCtl['value']<hir_b)]
-        outlier_def = dmsoCtl[~(dmsoCtl['value']>lwr_b) & (dmsoCtl['value']<hir_b)]
-        
-        print('For the file:')
-        print(fileName)
-        print('The outlier range is: ', [int(lwr_b),int(hir_b)])
-        print('')
-        print('Outliers within the DMSO are listed below:')
-        print(outlier_def)
-        print('')
-        print('Outliers are removed by default option can be set to keep them or change their definition')
-        if outliierCut == 1:
-            tmpMnoOut = tmpM.drop(outlier_def.index, axis = 0)
-        print('')
-        print('------------------------------------------------------')
+    # DMSO control is established as the set of 2 columns
+    tmpM.loc[tmpM['sample'].isin([1,12]),'sample'] ='DMSO'
+    tmpM = tmpM[['row','col','sample','value']]
 
-        tmpMnoOut['norm'] = tmpMnoOut['value']/np.mean(dmsoCtlwoOut['value'])
-        tmpMnoOut = tmpMnoOut.rename(columns={'value':'value_'+dattype,'norm':'norm_'+dattype})
+    # get all the DMSO sample defined in the sample section see above
+    # and take out the wells which are A, B, O, P
+    dmsoCtl = tmpM[(tmpM['sample'].isin(['DMSO'])) & (~tmpM['row'].isin(['A','B','O','P']))]
 
-        return tmpMnoOut
+    
+    lwr_b = stdDevbound(dmsoCtl['value'])[0]
+    hir_b = stdDevbound(dmsoCtl['value'])[1]
+    dmsoCtlwoOut = dmsoCtl[(dmsoCtl['value']>lwr_b) & (dmsoCtl['value']<hir_b)]
+    outlier_def = dmsoCtl[~(dmsoCtl['value']>lwr_b) & (dmsoCtl['value']<hir_b)]
+    
+    print('For the file:')
+    # print(fileName)
+    print('The outlier range is: ', [int(lwr_b),int(hir_b)])
+    print('')
+    print('Outliers within the DMSO are listed below:')
+    print(outlier_def)
+    print('')
+    print('Outliers are removed by default option can be set to keep them or change their definition')
+    if outlierCut == 1:
+        tmpMnoOut = tmpM.drop(outlier_def.index, axis = 0)
+    print('')
+    print('------------------------------------------------------')
+
+    tmpMnoOut['norm'] = tmpMnoOut['value']/np.mean(dmsoCtlwoOut['value'])
+    tmpMnoOut = tmpMnoOut.rename(columns={'value':'value_'+dattype,'norm':'norm_'+dattype})
+
+
+    return tmpMnoOut
 
 
 
@@ -96,14 +113,50 @@ def getFile(fileName, dattype):
 
     print('ERROR in reading the file the number of sample extracted is incorrect')
     return tmp
-    
-def combineData(mPath):
 
+def axesParam(data, atZero=True):
+    '''
+    This function returns the limit for the graph. When atZero: default(True) 
+    this will set y and x axis at zero with common maxima based on the maximal value
+    in both the norm_nanolic or norm_ffluc  data sets
+
+    data: correpsond to the combine data file generate combo
+    atZero: default(True) 
+    '''
+    
+    myXlim = [min(data['norm_ffluc'])*0.9, max(data['norm_ffluc'])*1.1]
+    myYlim = [min(data['norm_nanolic'])*0.9, max(data['norm_nanolic'])*1.1]
+
+    if atZero == True:
+        myXlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
+        myYlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
+
+    return myXlim, myYlim
+
+def stdDevbound(dataArray, custSD=3):
+    '''
+    Enables to obtain lower and higher bounds of the data based on the criteria of 3 standard deviation
+    ##TODO within the class when created append the thresholding methods to the filename
+
+    dataArray: correspond to the array for which we want to obtain the limit of interest
+    '''
+    outlierCutoffValue = custSD*np.std(dataArray)
+    lwr_b = np.mean(dataArray)-outlierCutoffValue
+    hir_b = np.mean(dataArray)+outlierCutoffValue
+
+    return [lwr_b, hir_b]
+
+def combineData(mPath, fileType = 'xlsx'):
+    '''
+    Function which enable to combine the ffluc and nanolic data within the same file
+    the initial fileType developped on was xlsx
+    '''
     dattype = 'ffluc'
-    fflname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.xlsx'))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.xlsx')))[0], dattype = dattype)
+    # here the set are present to be able to deal with potential presence of temporary open excel files ~ which can create problem
+    fflname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.'+fileType))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.'+fileType)))[0], dattype = dattype)
 
     dattype = 'nanolic'
-    hibname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.xlsx'))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.xlsx')))[0], dattype = dattype)
+    hibname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.'+fileType))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.'+fileType)))[0], dattype = dattype)
 
     combo = pd.merge(fflname,hibname,on=['row','col','sample'])
 
@@ -219,30 +272,6 @@ def getThePlot(mPath, style='scatter'):
     plt.savefig(saveName+'.png')
     plt.savefig(saveName+'.pdf')
 
-def axesParam(data, atZero=True):
-    '''
-    data: correpsond to the combine data file 
-    '''
-    
-    myXlim = [min(data['norm_ffluc'])*0.9, max(data['norm_ffluc'])*1.1]
-    myYlim = [min(data['norm_nanolic'])*0.9, max(data['norm_nanolic'])*1.1]
-
-    if atZero == True:
-        myXlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
-        myYlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
-
-    return myXlim, myYlim
-
-def stdDevbound(dataArray):
-    '''
-    dataArray: correspond to the array for which we want to obtain the limit of interest
-    '''
-    outlierCutoffValue = 3*np.std(dataArray)
-    lwr_b = np.mean(dataArray)-outlierCutoffValue
-    hir_b = np.mean(dataArray)+outlierCutoffValue
-
-    return [lwr_b, hir_b]
-
 def getPlateFormat(comboData, myVal, mPath):
     tmp = pd.pivot_table(comboData, values=myVal, index=['row'], columns=['col'])
     tmp.to_csv(mPath+os.sep+'normPlate_'+myVal+'.csv')
@@ -266,13 +295,16 @@ def getListOutofLim(combo):
 
     tmp = tmp[~((tmp['norm_nanolic']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
     combo[combo['norm_ffluc']]
-outliierCut = 1
+outlierCut = 1
 
 mPath = sys.argv[1]
 
 # Check if path exits
 if os.path.exists(mPath):
     print ("Folder exist")
+
+# fileType = input('Enter the file type to be working with options (csv or xlsx):')
+
 
 # mPath = input('Drag the folder containing the file to analyze:')
 # print(os.path.exists(mPath))
