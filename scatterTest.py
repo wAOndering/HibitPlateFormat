@@ -7,6 +7,8 @@ performed in a 384 format.
 The format is flexible however some of the function would need to be adapted for that
 especially the get file function
 
+Important all the STD is based on the STD from the 
+
 ## TODO: try to set this up with input instead or argparse
 ## TODO: includes some of the method in Class
 ## TODO: integrate some options
@@ -29,7 +31,6 @@ import argparse
 import sys
 
 
-
 #### LOAD set of custom functions required for further processing
 def getFile(fileName, dattype):
     '''
@@ -50,7 +51,7 @@ def getFile(fileName, dattype):
 
     if fileName.split(os.sep)[-1].split('.')[-1] == 'xlsx':
         ## reformat and reshape the data to a long format
-        tmp = pd.read_excel(fx, sheet_name='Results', usecols='F:AC', skiprows=9) # read the excel file based on location on the actual data
+        tmp = pd.read_excel(fileName, sheet_name='Results', usecols='F:AC', skiprows=9) # read the excel file based on location on the actual data
         plateH = np.shape(tmp)[0] # get the format of the plate height and 
         plateW = np.shape(tmp)[1] # get the format of the plate width
         tmp['row'] = list(string.ascii_uppercase)[:plateH] # create row labels
@@ -59,7 +60,7 @@ def getFile(fileName, dattype):
         tmpM['col'] = np.repeat(range(plateW),plateH)+1 # create col labels in python this is +1 as 0 is the start
     
     elif fileName.split(os.sep)[-1].split('.')[-1] == 'csv':
-        tmpO = pd.read_csv(fc) #temporary store the csv files prior to resoncstruction
+        tmpO = pd.read_csv(fileName) #temporary store the csv files prior to resoncstruction
         tmpM = tmpO['WellPosition'].str.split(':', expand=True)
         tmpM.columns = ['row', 'col']
         tmpM['value'] = tmpO['RLU']
@@ -70,13 +71,22 @@ def getFile(fileName, dattype):
     tmpM = tmpM.sort_values(['col','row'])
     tmpM = tmpM.reset_index(drop=True)
 
+
+    ##------------------------------------------------------------------
+    ## choose the type of labeling customSampleFormat
+    ##------------------------------------------------------------------
+
     # this line is important as it determines the plate format and assume that the samples are repeated in duplicated columns
     tmpM['sample'] = np.repeat(range(int(plateW/2)),plateH*2)+1 
-
     # DMSO control is established as the set of 2 columns
     tmpM.loc[tmpM['sample'].isin([1,12]),'sample'] ='DMSO'
     tmpM = tmpM[['row','col','sample','value']]
-
+    print(customSampleFormat)
+    if customSampleFormat == '1':
+        print('HHHHHHHHHHHHHHHHHHHHHHHH')
+        tmpM.loc[~(tmpM['sample']=='DMSO'),'sample'] = 'EXP'
+    else:
+        print('LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL')
     # get all the DMSO sample defined in the sample section see above
     # and take out the wells which are A, B, O, P
     dmsoCtl = tmpM[(tmpM['sample'].isin(['DMSO'])) & (~tmpM['row'].isin(['A','B','O','P']))]
@@ -103,33 +113,24 @@ def getFile(fileName, dattype):
     tmpMnoOut['norm'] = tmpMnoOut['value']/np.mean(dmsoCtlwoOut['value'])
     tmpMnoOut = tmpMnoOut.rename(columns={'value':'value_'+dattype,'norm':'norm_'+dattype})
 
-
     return tmpMnoOut
-
-
-
-    else:
-        tmp = pd.read_csv(fileName)
-
-    print('ERROR in reading the file the number of sample extracted is incorrect')
-    return tmp
 
 def axesParam(data, atZero=True):
     '''
     This function returns the limit for the graph. When atZero: default(True) 
     this will set y and x axis at zero with common maxima based on the maximal value
-    in both the norm_nanolic or norm_ffluc  data sets
+    in both the norm_nanoluc or norm_ffluc  data sets
 
     data: correpsond to the combine data file generate combo
     atZero: default(True) 
     '''
     
     myXlim = [min(data['norm_ffluc'])*0.9, max(data['norm_ffluc'])*1.1]
-    myYlim = [min(data['norm_nanolic'])*0.9, max(data['norm_nanolic'])*1.1]
+    myYlim = [min(data['norm_nanoluc'])*0.9, max(data['norm_nanoluc'])*1.1]
 
     if atZero == True:
-        myXlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
-        myYlim = [0,1.1*max(max(data['norm_nanolic']),max(data['norm_ffluc']))]
+        myXlim = [0,1.1*max(max(data['norm_nanoluc']),max(data['norm_ffluc']))]
+        myYlim = [0,1.1*max(max(data['norm_nanoluc']),max(data['norm_ffluc']))]
 
     return myXlim, myYlim
 
@@ -148,34 +149,65 @@ def stdDevbound(dataArray, custSD=3):
 
 def combineData(mPath, fileType = 'xlsx'):
     '''
-    Function which enable to combine the ffluc and nanolic data within the same file
+    Function which enable to combine the ffluc and nanoluc data within the same file
     the initial fileType developped on was xlsx
     '''
     dattype = 'ffluc'
     # here the set are present to be able to deal with potential presence of temporary open excel files ~ which can create problem
     fflname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.'+fileType))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.'+fileType)))[0], dattype = dattype)
 
-    dattype = 'nanolic'
+    dattype = 'nanoluc'
     hibname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.'+fileType))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.'+fileType)))[0], dattype = dattype)
 
     combo = pd.merge(fflname,hibname,on=['row','col','sample'])
 
     return combo
 
-def getThePlot(mPath, style='scatter'):
+def getPlateFormat(comboData, myVal, mPath):
+    tmp = pd.pivot_table(comboData, values=myVal, index=['row'], columns=['col'])
+    tmp.to_csv(mPath+os.sep+'output'+os.sep+'normPlate_'+myVal+'.csv')
+    tmp = tmp.to_numpy()
+
+    return tmp
+
+def getListOutofLim(combo):
+    '''
+    get the list of elements outside the bos 
+    '''
+    ### geth the value for the red 3SD data 
+    ###---------------------------------------------------------------------------------
+    xMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_ffluc']) #combo['norm_ffluc'] - original value to look at SD across the entire plate
+    yMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_nanoluc'])#combo['norm_nanoluc']  - original value to look at SD across the entire plate
+    ###---------------------------------------------------------------------------------
+    tmp = combo[~((combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1]))]
+
+
+    xmask = (combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1])
+    ymask = (combo['norm_nanoluc']>yMark[0]) & (combo['norm_nanoluc']<yMark[1])
+    tmp = combo[~(xmask & ymask)]
+
+    return tmp
+
+
+
+    tmp = tmp[~((tmp['norm_nanoluc']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
+    combo[combo['norm_ffluc']]
+
+def getThePlot(mPath, style='scatter', allPlot = True):
     print('Generating plots.....')
 
     fig, ax = plt.subplots(2,2,figsize=([16, 16]))
 
-
     combo = combineData(mPath)
     ##################################
-    ## Get the plate map
+    ## Get the plate map HEATMAP
     ##################################
+    ## generate heatmaps for both the ffluc and nanoluc
+
     myVmin = min(np.array(axesParam(combo, False)).flatten())
     myVmax = max(np.array(axesParam(combo, False)).flatten())
     ax[0][0].imshow(getPlateFormat(combo, 'norm_ffluc', mPath), interpolation = 'nearest', aspect='auto', vmin=myVmin, vmax=myVmax) # cmap= 'bwr')
-    ax[0][1].imshow(getPlateFormat(combo, 'norm_nanolic', mPath), interpolation = 'nearest', aspect='auto', vmin=myVmin, vmax=myVmax) # cmap= 'bwr')
+    ax[0][1].imshow(getPlateFormat(combo, 'norm_nanoluc', mPath), interpolation = 'nearest', aspect='auto', vmin=myVmin, vmax=myVmax) # cmap= 'bwr')
     
     for i in ax[0]:
         i.set_xlabel('plate columns')
@@ -185,23 +217,26 @@ def getThePlot(mPath, style='scatter'):
     ## Get the scatter
     ##################################
     if style == 'scatter':
-        sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanolic", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
+        sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
 
         dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
         dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
 
-        sns.scatterplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanolic", alpha=0.9, color=dmsoCol,ax=ax[1][1])
+        sns.scatterplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=ax[1][1])
 
     elif style == 'kde':
-        sns.kdeplot(data=combo, x="norm_ffluc", y="norm_nanolic", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
+        sns.kdeplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
 
         dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
         dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
 
-        sns.kdeplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanolic", alpha=0.9, color=dmsoCol,ax=ax[1][1])
+        sns.kdeplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=ax[1][1])
 
-    xMark = stdDevbound(combo['norm_ffluc'])
-    yMark = stdDevbound(combo['norm_nanolic'])
+    ### geth the value for the red 3SD data 
+    ###---------------------------------------------------------------------------------
+    xMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_ffluc']) #combo['norm_ffluc'] - original value to look at SD across the entire plate
+    yMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_nanoluc'])#combo['norm_nanoluc']  - original value to look at SD across the entire plate
+    ###---------------------------------------------------------------------------------
 
     for i in ax[1]:
         i.set_xlim(axesParam(combo)[0])
@@ -212,11 +247,11 @@ def getThePlot(mPath, style='scatter'):
             i.axhline(yMark[j], linestyle='dashed', color='red')
 
     ax[0][0].set_title('Plate map of ffluc', fontsize= 12)
-    ax[0][1].set_title('Plate map of nanolic', fontsize= 12)
-    ax[1][0].set_title('Scatter for all the samples (red lines: 3*SD)', fontsize= 12)
-    ax[1][1].set_title('Scatter for DMSO only (red lines: 3*SD)', fontsize= 12)
+    ax[0][1].set_title('Plate map of nanoluc', fontsize= 12)
+    ax[1][0].set_title('Scatter for all the samples (red lines: 3*SD of DMSO)', fontsize= 12)
+    ax[1][1].set_title('Scatter for DMSO only (red lines: 3*SD of DMSO)', fontsize= 12)
 
-    saveName = mPath+os.sep+'figSummary_'+style
+    saveName = mPath+os.sep+'output'+os.sep+'figSummary_'+style
     plt.savefig(saveName+'.png')
     plt.savefig(saveName+'.pdf')
 
@@ -224,94 +259,107 @@ def getThePlot(mPath, style='scatter'):
     ## Get the plot for individual samples
     ##################################
     
-    fig, ax = plt.subplots(4,3,figsize=([16, 16]))
+    if allPlot == True:
+        fig, ax = plt.subplots(4,3,figsize=([16, 16]))
 
-    for idx, (i, j) in enumerate(zip(ax.flatten(), combo['sample'].unique())):
-        # print(idx, i, j)
-        dmsoCol = matplotlib.cm.get_cmap('Paired')(idx)
-        dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
-        sns.scatterplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanolic", alpha=0.9, color=dmsoCol,ax=i)
-        sns.kdeplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanolic", alpha=0.3, color=dmsoCol,ax=i)
-        i.set_xlim(axesParam(combo)[0])
-        i.set_ylim(axesParam(combo)[1])
+        for idx, (i, j) in enumerate(zip(ax.flatten(), combo['sample'].unique())):
+            # print(idx, i, j)
+            dmsoCol = matplotlib.cm.get_cmap('Paired')(idx)
+            dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
+            sns.scatterplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=i)
+            sns.kdeplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.3, color=dmsoCol,ax=i)
+            i.set_xlim(axesParam(combo)[0])
+            i.set_ylim(axesParam(combo)[1])
+            for k in [0,1]:
+                # print(xMark[j])
+                i.axvline(xMark[k], linestyle='dashed', color='red')
+                i.axhline(yMark[k], linestyle='dashed', color='red')
+                # i.set_title('Sample: '+str(j), fontsize= 12)
+                i.text(0.1, 0.2, 'Sample: '+str(j), fontsize= 12)
+
+        saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'+style
+        plt.savefig(saveName+'.png')
+        plt.savefig(saveName+'.pdf')
+
+        ##################################
+        ## Get the outlier samples
+        ##################################
+        fig, ax = plt.subplots(figsize=([16, 16]))
+        ax.set_xlim(axesParam(combo)[0])
+        ax.set_ylim(axesParam(combo)[1])
         for k in [0,1]:
             # print(xMark[j])
-            i.axvline(xMark[k], linestyle='dashed', color='red')
-            i.axhline(yMark[k], linestyle='dashed', color='red')
-            # i.set_title('Sample: '+str(j), fontsize= 12)
-            i.text(0.1, 0.2, 'Sample: '+str(j), fontsize= 12)
+            ax.axvline(xMark[k], linestyle='dashed', color='red')
+            ax.axhline(yMark[k], linestyle='dashed', color='red')
+        
+        tmp = getListOutofLim(combo)
+        sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanoluc", s=80, color='black', alpha=0.2)
+        sns.scatterplot(data=tmp, x="norm_ffluc", y="norm_nanoluc", s=80, color='red', alpha=0.8)
+        for i, j in tmp.iterrows():
+            mytext = str(j['sample'])+': '+j['row']+str(j['col'])
+            ax.text(j['norm_ffluc'], j['norm_nanoluc'], mytext, fontsize = 12)
 
-    saveName = mPath+os.sep+'figSummaryInd_'+style
-    plt.savefig(saveName+'.png')
-    plt.savefig(saveName+'.pdf')
+        print('')
+        print('Table for data falling out of the 3*SD limits - 3SD from the DMSO group')
+        print(tmp)
 
-    ##################################
-    ## Get the outlier samples
-    ##################################
-    fig, ax = plt.subplots(figsize=([16, 16]))
-    ax.set_xlim(axesParam(combo)[0])
-    ax.set_ylim(axesParam(combo)[1])
-    for k in [0,1]:
-        # print(xMark[j])
-        ax.axvline(xMark[k], linestyle='dashed', color='red')
-        ax.axhline(yMark[k], linestyle='dashed', color='red')
-    
-    tmp = getListOutofLim(combo)
-    sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanolic", s=80, color='black', alpha=0.2)
-    sns.scatterplot(data=tmp, x="norm_ffluc", y="norm_nanolic", s=80, color='red', alpha=0.8)
-    for i, j in tmp.iterrows():
-        mytext = str(j['sample'])+': '+j['row']+str(j['col'])
-        ax.text(j['norm_ffluc'], j['norm_nanolic'], mytext, fontsize = 12)
+        tmp.to_csv(mPath+os.sep+'output'+os.sep+'outerSample.csv')
+        saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_'
+        plt.savefig(saveName+'.png')
+        plt.savefig(saveName+'.pdf')
 
-    print('')
-    print('Table for data falling out of the 3*SD limits')
-    print(tmp)
-
-    tmp.to_csv(mPath+os.sep+'outerSample.csv')
-    saveName = mPath+os.sep+'figSummaryOuterSample_'
-    plt.savefig(saveName+'.png')
-    plt.savefig(saveName+'.pdf')
-
-def getPlateFormat(comboData, myVal, mPath):
-    tmp = pd.pivot_table(comboData, values=myVal, index=['row'], columns=['col'])
-    tmp.to_csv(mPath+os.sep+'normPlate_'+myVal+'.csv')
-    tmp = tmp.to_numpy()
-
+def quickConversion(tmp, myCol=None):
+    '''
+    tools to quickly convert the output of groupby
+    '''
+    tmp = tmp.reset_index()
+    if tmp.columns.nlevels > 1:
+        tmp.columns = ['_'.join(col) for col in tmp.columns] 
+    tmp.columns = tmp.columns.str.replace('[_]','')
+    if myCol:
+        tmp = tmp.rename(columns={np.nan: myCol})
     return tmp
 
-def getListOutofLim(combo):
-    xMark = stdDevbound(combo['norm_ffluc'])
-    yMark = stdDevbound(combo['norm_nanolic'])
-    tmp = combo[~((combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1]))]
+def getCV(mPath, combo):
+    '''
+    Function to generate and display CV by group 
+    CV being defined as std/mean
+    '''
+    # def custCV(x):
+    #     return np.std(x)/np.mean(x)
 
+    meltCombo = combo.melt(['row','col','sample'])
+    tmp = meltCombo.groupby(['sample','variable']).agg({'value':[min, max, sum, 'count', np.mean, np.std]})
+    a = quickConversion(tmp)
+    a['CV'] = a['valuestd']/a['valuemean']
+    a.to_csv(mPath+os.sep+'output'+os.sep+'Samples_stats.csv')
 
-    xmask = (combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1])
-    ymask = (combo['norm_nanolic']>yMark[0]) & (combo['norm_nanolic']<yMark[1])
-    tmp = combo[~(xmask & ymask)]
-
-    return tmp
-
-
-
-    tmp = tmp[~((tmp['norm_nanolic']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
-    combo[combo['norm_ffluc']]
+## default or set user inputs criteria
 outlierCut = 1
 
+## get the arguments after the file 
 mPath = sys.argv[1]
-
-# Check if path exits
 if os.path.exists(mPath):
     print ("Folder exist")
+    os.makedirs(mPath+os.sep+'output',exist_ok=True)
 
 # fileType = input('Enter the file type to be working with options (csv or xlsx):')
-
-
+print('')
+print('-------------------------------------------')
+print('Select output types:')
+print('1: option1 - 2 groups // with 1 group DMSO on the first and last 2 columns vs 1 sample in between those wells')
+print('2: option1 - 12 groups // with 1 group DMSO on the first and last 2 columns and other samples being duplicated columns')
+customSampleFormat = input('make a selection (1 or 2):')
+print(customSampleFormat)
+print('-------------------------------------------')
+print('')
 # mPath = input('Drag the folder containing the file to analyze:')
 # print(os.path.exists(mPath))
 print(mPath)
 # print(glob.glob(mPath+os.sep+'*.*'))
 combo = combineData(mPath)
-combo.to_csv(mPath+os.sep+'combinedOutput.csv')
-getThePlot(mPath)
-
+combo.to_csv(mPath+os.sep+'output'+os.sep+'combinedOutput.csv')
+getThePlot(mPath, 'scatter')
+getThePlot(mPath, style='kde', allPlot = False)
+getCV(mPath, combo)
 # 'C:/Users/Windows/Desktop/CamiloTest'
