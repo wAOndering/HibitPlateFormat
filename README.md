@@ -16,6 +16,8 @@ Basic plate map has the format below:
 This can be tested on the folder [NP DOSING](https://github.com/wAOndering/HibitPlateFormat/tree/main/NP%20DOSING)
 
 ## outputs:
+Example of the outputs can be found [here](https://github.com/wAOndering/HibitPlateFormat/tree/main/NP%20DOSING/output)
+
 ### data files:
 * `combinedOutput.csv`: contains normalized and raw values from nanoluc and ffluc plates in a long format with wellPosition
 * `normPlate_norm_ffluc.csv`: is a matrix of the plate normalized to DMSO control for ffluc in a plate format (useful for heatmap
