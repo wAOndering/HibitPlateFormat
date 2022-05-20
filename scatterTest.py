@@ -14,10 +14,16 @@ Important all the STD is based on the STD from the
 ## TODO: integrate some options
 ## TODO: comments the code better
 ## TODO: update github
+## TODO: create a custom color map generation where user select colors then become of cmap and can be substituded from Paired
 ## TODO: can create a more interactive interface with the command prompt
+## TODO: substitution of sample generate by user input samples
+## TODO: sample color can be used and determine to create a color map of the plate format
 '''
 
+
 #### LOAD set of python libraries required for further processing
+import warnings
+warnings.simplefilter("ignore")
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -32,6 +38,48 @@ import sys
 
 
 #### LOAD set of custom functions required for further processing
+def createAplate():
+    '''
+    Function to enable the creation of a plate format 
+    '''
+    w_dim = 24
+    h_dim = 16
+    # make an empty data set
+    data = np.zeros((h_dim, w_dim))
+
+    # get the control data plate
+    data[2:14,0:2] = 1
+    data[2:14,22:24] = 1
+    
+    # get the range for sample
+    data[:,2:22]=2
+
+    # create a colormap
+    my_cmap = matplotlib.colors.ListedColormap(['#f7f7f7','#ef8a62','#67a9cf'])
+
+    # generate the figure
+    fig, ax = plt.subplots(figsize=[10,4])
+    mymap = ax.pcolormesh(data, cmap=my_cmap, edgecolors='grey', linewidth=0.5)
+    
+    # This function formatter will replace integers with target names
+    formatter = plt.FuncFormatter(lambda val, loc: ['NA', 'DMSO ctl', 'Samples'][val])
+    plt.colorbar(mymap, ticks=[0, 1, 2], format=formatter)
+    mymap.set_clim(-0.5, 2.5)     # Set the clim so that labels are centered on each block
+
+    # put the major ticks at the middle of each cell
+    ax.set_xticks(np.arange(data.shape[1]) + 0.5, minor=False) #0.5 enable to set the axis in the middle
+    ax.set_yticks(np.arange(data.shape[0]) + 0.5, minor=False) #0.5 enable to set the axis in the middle
+    ax.invert_yaxis()
+
+    #labels
+    column_labels = [str(x) for x in list(np.arange(24)+1)]
+    row_labels = list(string.ascii_uppercase)[:h_dim] 
+    ax.set_xticklabels(column_labels, minor=False)
+    ax.set_yticklabels(row_labels, minor=False)
+    plt.title('Standard plate format')
+
+    plt.savefig('plateFormat.png')
+    
 def getFile(fileName, dattype):
     '''
     Main function initially set up as default by reading the xlsx file
@@ -83,10 +131,8 @@ def getFile(fileName, dattype):
     tmpM = tmpM[['row','col','sample','value']]
     print(customSampleFormat)
     if customSampleFormat == '1':
-        print('HHHHHHHHHHHHHHHHHHHHHHHH')
         tmpM.loc[~(tmpM['sample']=='DMSO'),'sample'] = 'EXP'
-    else:
-        print('LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL')
+
     # get all the DMSO sample defined in the sample section see above
     # and take out the wells which are A, B, O, P
     dmsoCtl = tmpM[(tmpM['sample'].isin(['DMSO'])) & (~tmpM['row'].isin(['A','B','O','P']))]
@@ -105,6 +151,7 @@ def getFile(fileName, dattype):
     print(outlier_def)
     print('')
     print('Outliers are removed by default option can be set to keep them or change their definition')
+    print('Outliers will be displayed as white box in the heatmap')
     if outlierCut == 1:
         tmpMnoOut = tmpM.drop(outlier_def.index, axis = 0)
     print('')
@@ -277,7 +324,7 @@ def getThePlot(mPath, style='scatter', allPlot = True):
                 # i.set_title('Sample: '+str(j), fontsize= 12)
                 i.text(0.1, 0.2, 'Sample: '+str(j), fontsize= 12)
 
-        saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'+style
+        saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'
         plt.savefig(saveName+'.png')
         plt.savefig(saveName+'.pdf')
 
@@ -351,6 +398,11 @@ print('1: option1 - 2 groups // with 1 group DMSO on the first and last 2 column
 print('2: option1 - 12 groups // with 1 group DMSO on the first and last 2 columns and other samples being duplicated columns')
 customSampleFormat = input('make a selection (1 or 2):')
 print(customSampleFormat)
+# print("color options are defaulted to ['Paired'] in color maps (link 1 below) for more color options visit:" )
+# print("in the future create a custom color map generation where user select colors then become of cmap and can be substituded from Paired")
+# print('link 1: https://matplotlib.org/3.5.0/tutorials/colors/colormaps.html')
+# print('link 2: https://colorbrewer2.org/')
+# input('Press Enter to continue')
 print('-------------------------------------------')
 print('')
 # mPath = input('Drag the folder containing the file to analyze:')
