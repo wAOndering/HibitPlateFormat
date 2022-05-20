@@ -35,12 +35,21 @@ This can be tested on the folder [NP DOSING](https://github.com/wAOndering/Hibit
 * `figSummaryOuterSample`: correspond to samples falling outside of 3SD of DMSO control with labeled well position
 
 ### Examples
-<p float="middle">
-	<img src="NP DOSING/output/figSummary_kde.png"  ><!--  width="310" height="290" title="View 1" alt="view1" align="left" vspace = "10" hspace="30" style="border: 0.5px solid white"  /> --> 
-	<img src="NP DOSING/output/figSummary_scatter.png" ><!-- width="310" height="290" title="View 2" alt="view2" algin="right" vspace = "10" style="border: 0.5px solid white"> -->
-	<img src="NP DOSING/output/figSummaryInd_.png" >
-	<img src="NP DOSING/output/figSummaryOuterSample_.png" >
-</p>
+<!-- images here are created within a table -->
+<table>
+	<tr>
+		<td>figSummary (kde)</td>
+		<td>figSummary (scatter)</td>
+		<td>figSummaryInd</td>
+		<td>figSummaryOuterSample</td>
+	</tr>
+	<tr>
+		<td><img src="NP DOSING/output/figSummary_kde.png"></td>
+		<td><img src="NP DOSING/output/figSummary_scatter.png"></td>
+		<td><img src="NP DOSING/output/figSummaryInd_.png"></td>
+		<td><img src="NP DOSING/output/figSummaryOuterSample_.png" ></td>
+	</tr>
+</table>
 
 ## Notes 
 ### color
