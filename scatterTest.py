@@ -242,10 +242,22 @@ def getListOutofLim(combo):
 
 def getThePlot(mPath, style='scatter', allPlot = True):
     print('Generating plots.....')
-
     fig, ax = plt.subplots(2,2,figsize=([16, 16]))
-
     combo = combineData(mPath)
+
+    ##################################
+    ## Definition of the graph limit
+    ##################################
+    if myCustomLimitOpt == str(1):
+        myXaxis = [0, 2]
+        myYaxis = [0, 2]
+    if myCustomLimitOpt == str(2):
+        myXaxis = axesParam(combo)[0]
+        myYaxis = axesParam(combo)[1]
+    if myCustomLimitOpt == str(3):
+        myXaxis = float(myCustomLimitOptX_low), float(myCustomLimitOptX_high)
+        myYaxis = [float(myCustomLimitOptY_low), float(myCustomLimitOptY_high)]
+
     ##################################
     ## Get the plate map HEATMAP
     ##################################
@@ -286,8 +298,8 @@ def getThePlot(mPath, style='scatter', allPlot = True):
     ###---------------------------------------------------------------------------------
 
     for i in ax[1]:
-        i.set_xlim(axesParam(combo)[0])
-        i.set_ylim(axesParam(combo)[1])
+        i.set_xlim(myXaxis)
+        i.set_ylim(myYaxis)
         for j in [0,1]:
             # print(xMark[j])
             i.axvline(xMark[j], linestyle='dashed', color='red')
@@ -315,8 +327,8 @@ def getThePlot(mPath, style='scatter', allPlot = True):
             dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
             sns.scatterplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=i)
             sns.kdeplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.3, color=dmsoCol,ax=i)
-            i.set_xlim(axesParam(combo)[0])
-            i.set_ylim(axesParam(combo)[1])
+            i.set_xlim(myXaxis)
+            i.set_ylim(myYaxis)
             for k in [0,1]:
                 # print(xMark[j])
                 i.axvline(xMark[k], linestyle='dashed', color='red')
@@ -332,8 +344,8 @@ def getThePlot(mPath, style='scatter', allPlot = True):
         ## Get the outlier samples
         ##################################
         fig, ax = plt.subplots(figsize=([16, 16]))
-        ax.set_xlim(axesParam(combo)[0])
-        ax.set_ylim(axesParam(combo)[1])
+        ax.set_xlim(myXaxis)
+        ax.set_ylim(myYaxis)
         for k in [0,1]:
             # print(xMark[j])
             ax.axvline(xMark[k], linestyle='dashed', color='red')
@@ -403,6 +415,20 @@ print(customSampleFormat)
 # print('link 1: https://matplotlib.org/3.5.0/tutorials/colors/colormaps.html')
 # print('link 2: https://colorbrewer2.org/')
 # input('Press Enter to continue')
+print('-------------------------------------------')
+print('')
+
+print('-------------------------------------------')
+print('Select the limits to be displayed on the graph options:')
+print('1: (default) option with limit set to 2 for both x and y axes')
+print("2: have the axes be fit to the data from 0 to 10'%' of maximum range for both x and y axes" )
+print("3: input your own axess value for x and y" )
+myCustomLimitOpt = input('Make option selection based on what is described above (eg. 1):')
+if myCustomLimitOpt == str(3):
+    myCustomLimitOptX_low = input('Input the MIN value of x (eg: 0):')
+    myCustomLimitOptX_high = input('Input the MAX value of x (eg: 0):')
+    myCustomLimitOptY_low = input('Input the MIN value of y (eg: 0):')
+    myCustomLimitOptY_high = input('Input the MAX value of y (eg: 0):')
 print('-------------------------------------------')
 print('')
 # mPath = input('Drag the folder containing the file to analyze:')
