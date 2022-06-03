@@ -249,6 +249,7 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
     print('Generating plots.....')
     fig, ax = plt.subplots(2,2,figsize=([16, 16]))
     combo = combineData(mPath)
+    lowerlim =  min(axesParam(combo, False)[0][0], axesParam(combo, False)[1][0])# logScale cannot be 0 and should avoid artificial truncation from lower lim
 
     ##################################
     ## Definition of the graph limit
@@ -310,8 +311,9 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
         ax[1][1].set_xscale("log", base=logScale)
         ax[1][1].set_yscale("log", base=logScale)
         saveName = mPath+os.sep+'output'+os.sep+'figSummary_log'+str(logScale)+'_'+style
-        myXaxis = [0.2, myXaxis[1]]
-        myYaxis = [0.2, myYaxis[1]]   
+        
+        myXaxis = [min(0.2, lowerlim), myXaxis[1]] axesParam(combo, False)[0][0]
+        myYaxis = [min(0.2, lowerlim), myYaxis[1]]   
     else:
         saveName = mPath+os.sep+'output'+os.sep+'figSummary_'+style        
     ###---------------------------------------------------------------------------------
@@ -358,8 +360,8 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
                 if logScale != None:
                     i.set_xscale("log", base=logScale)
                     i.set_yscale("log", base=logScale)
-                    myXaxis = [0.2, myXaxis[1]]
-                    myYaxis = [0.2, myYaxis[1]]  
+                    myXaxis = [min(0.2, lowerlim), myXaxis[1]]
+                    myYaxis = [min(0.2, lowerlim), myYaxis[1]]  
                     saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_log'+str(logScale)
                 else:
                     saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'
@@ -397,8 +399,8 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
         if logScale != None:
             ax.set_xscale("log", base=logScale)
             ax.set_yscale("log", base=logScale)
-            myXaxis = [0.2, myXaxis[1]]
-            myYaxis = [0.2, myYaxis[1]]  
+            myXaxis = [min(0.2, lowerlim), myXaxis[1]]
+            myYaxis = [min(0.2, lowerlim), myYaxis[1]]  
             saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_log'+str(logScale)
         else:
             saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_'
