@@ -35,7 +35,10 @@ import matplotlib
 from pathlib import Path
 import argparse
 import sys
-
+try:
+    import pyfiglet
+except:
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pyfiglet'])
 
 #### LOAD set of custom functions required for further processing
 def createAplate():
@@ -312,7 +315,7 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
         ax[1][1].set_yscale("log", base=logScale)
         saveName = mPath+os.sep+'output'+os.sep+'figSummary_log'+str(logScale)+'_'+style
         
-        myXaxis = [min(0.2, lowerlim), myXaxis[1]] axesParam(combo, False)[0][0]
+        myXaxis = [min(0.2, lowerlim), myXaxis[1]]
         myYaxis = [min(0.2, lowerlim), myYaxis[1]]   
     else:
         saveName = mPath+os.sep+'output'+os.sep+'figSummary_'+style        
@@ -449,6 +452,10 @@ if os.path.exists(mPath):
     os.makedirs(mPath+os.sep+'output',exist_ok=True)
 
 # fileType = input('Enter the file type to be working with options (csv or xlsx):')
+print('#########################################################################################################')
+print(pyfiglet.figlet_format("HiBit",font='isometric3', width=10000))
+print('#########################################################################################################')
+
 print('')
 print('-------------------------------------------')
 print('Select output types:')
