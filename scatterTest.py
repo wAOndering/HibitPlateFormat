@@ -240,7 +240,12 @@ def getListOutofLim(combo):
     tmp = tmp[~((tmp['norm_nanoluc']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
     combo[combo['norm_ffluc']]
 
-def getThePlot(mPath, style='scatter', allPlot = True):
+def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
+    '''
+    logScale: either None for linear or which ever base desired 
+
+    '''
+
     print('Generating plots.....')
     fig, ax = plt.subplots(2,2,figsize=([16, 16]))
     combo = combineData(mPath)
@@ -297,6 +302,20 @@ def getThePlot(mPath, style='scatter', allPlot = True):
     yMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_nanoluc'])#combo['norm_nanoluc']  - original value to look at SD across the entire plate
     ###---------------------------------------------------------------------------------
 
+    ### introduction of log scale
+    ###---------------------------------------------------------------------------------
+    if logScale != None:
+        ax[1][0].set_xscale("log", base=logScale)
+        ax[1][0].set_yscale("log", base=logScale)
+        ax[1][1].set_xscale("log", base=logScale)
+        ax[1][1].set_yscale("log", base=logScale)
+        saveName = mPath+os.sep+'output'+os.sep+'figSummary_log'+str(logScale)+'_'+style
+        myXaxis = [0.2, myXaxis[1]]
+        myYaxis = [0.2, myYaxis[1]]   
+    else:
+        saveName = mPath+os.sep+'output'+os.sep+'figSummary_'+style        
+    ###---------------------------------------------------------------------------------
+    
     for i in ax[1]:
         i.set_xlim(myXaxis)
         i.set_ylim(myYaxis)
@@ -310,7 +329,6 @@ def getThePlot(mPath, style='scatter', allPlot = True):
     ax[1][0].set_title('Scatter for all the samples (red lines: 3*SD of DMSO)', fontsize= 12)
     ax[1][1].set_title('Scatter for DMSO only (red lines: 3*SD of DMSO)', fontsize= 12)
 
-    saveName = mPath+os.sep+'output'+os.sep+'figSummary_'+style
     plt.savefig(saveName+'.png')
     plt.savefig(saveName+'.pdf')
 
@@ -327,8 +345,7 @@ def getThePlot(mPath, style='scatter', allPlot = True):
             dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
             sns.scatterplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=i)
             sns.kdeplot(data=combo[combo['sample']==j], x="norm_ffluc", y="norm_nanoluc", alpha=0.3, color=dmsoCol,ax=i)
-            i.set_xlim(myXaxis)
-            i.set_ylim(myYaxis)
+
             for k in [0,1]:
                 # print(xMark[j])
                 i.axvline(xMark[k], linestyle='dashed', color='red')
@@ -336,7 +353,21 @@ def getThePlot(mPath, style='scatter', allPlot = True):
                 # i.set_title('Sample: '+str(j), fontsize= 12)
                 i.text(0.1, 0.2, 'Sample: '+str(j), fontsize= 12)
 
-        saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'
+                ### introduction of log scale
+                ###---------------------------------------------------------------------------------
+                if logScale != None:
+                    i.set_xscale("log", base=logScale)
+                    i.set_yscale("log", base=logScale)
+                    myXaxis = [0.2, myXaxis[1]]
+                    myYaxis = [0.2, myYaxis[1]]  
+                    saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_log'+str(logScale)
+                else:
+                    saveName = mPath+os.sep+'output'+os.sep+'figSummaryInd_'
+                ###---------------------------------------------------------------------------------
+
+            i.set_xlim(myXaxis)
+            i.set_ylim(myYaxis)
+
         plt.savefig(saveName+'.png')
         plt.savefig(saveName+'.pdf')
 
@@ -344,8 +375,7 @@ def getThePlot(mPath, style='scatter', allPlot = True):
         ## Get the outlier samples
         ##################################
         fig, ax = plt.subplots(figsize=([16, 16]))
-        ax.set_xlim(myXaxis)
-        ax.set_ylim(myYaxis)
+
         for k in [0,1]:
             # print(xMark[j])
             ax.axvline(xMark[k], linestyle='dashed', color='red')
@@ -362,8 +392,22 @@ def getThePlot(mPath, style='scatter', allPlot = True):
         print('Table for data falling out of the 3*SD limits - 3SD from the DMSO group')
         print(tmp)
 
+        ### introduction of log scale
+        ###---------------------------------------------------------------------------------
+        if logScale != None:
+            ax.set_xscale("log", base=logScale)
+            ax.set_yscale("log", base=logScale)
+            myXaxis = [0.2, myXaxis[1]]
+            myYaxis = [0.2, myYaxis[1]]  
+            saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_log'+str(logScale)
+        else:
+            saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_'
+        ###---------------------------------------------------------------------------------
+        ax.set_xlim(myXaxis)
+        ax.set_ylim(myYaxis)
+
         tmp.to_csv(mPath+os.sep+'output'+os.sep+'outerSample.csv')
-        saveName = mPath+os.sep+'output'+os.sep+'figSummaryOuterSample_'
+        
         plt.savefig(saveName+'.png')
         plt.savefig(saveName+'.pdf')
 
@@ -431,6 +475,16 @@ if myCustomLimitOpt == str(3):
     myCustomLimitOptY_high = input('Input the MAX value of y (eg: 0):')
 print('-------------------------------------------')
 print('')
+
+## this section can be turned back on to have optional graphing
+
+# print('-------------------------------------------')
+# print('Graph will be generated on linear scale and also log scale')
+# mylogScale = input('Select the base for the log scale (eg. 2 or 10):')
+# mylogScale = int(mylogScale)
+# print('-------------------------------------------')
+# print('')
+
 # mPath = input('Drag the folder containing the file to analyze:')
 # print(os.path.exists(mPath))
 print(mPath)
@@ -439,5 +493,16 @@ combo = combineData(mPath)
 combo.to_csv(mPath+os.sep+'output'+os.sep+'combinedOutput.csv')
 getThePlot(mPath, 'scatter')
 getThePlot(mPath, style='kde', allPlot = False)
+
+# get plot on log 2
+mylogScale = 2
+getThePlot(mPath, 'scatter', logScale=mylogScale)
+getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+
+# get plot on log 10
+# mylogScale = 10
+# getThePlot(mPath, 'scatter', logScale=mylogScale)
+# getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+
 getCV(mPath, combo)
 # 'C:/Users/Windows/Desktop/CamiloTest'
