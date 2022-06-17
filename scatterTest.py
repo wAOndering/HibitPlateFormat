@@ -41,6 +41,19 @@ except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pyfiglet'])
 
 #### LOAD set of custom functions required for further processing
+def quickConversion(tmp, myCol=None, option=1):
+    if option ==0:
+        tmp = tmp.reset_index()
+    elif option ==1:
+        tmp = tmp.reset_index()
+        if tmp.columns.nlevels > 1:
+            tmp.columns = ['_'.join(col) for col in tmp.columns] 
+        tmp.columns = tmp.columns.str.replace('[_]','')
+        if myCol:
+            tmp = tmp.rename(columns={np.nan: myCol})
+    return tmp
+
+
 def createAplate():
     '''
     Function to enable the creation of a plate format 
@@ -210,6 +223,7 @@ def combineData(mPath, fileType = 'xlsx'):
     hibname = getFile(list(set(glob.glob(mPath+os.sep+'*'+dattype+'*.'+fileType))-set(glob.glob(mPath+os.sep+'~*'+dattype+'*.'+fileType)))[0], dattype = dattype)
 
     combo = pd.merge(fflname,hibname,on=['row','col','sample'])
+    combo['rowCol'] = combo['row'].astype(str)+'_'+combo['col'].astype(str)
 
     return combo
 
@@ -243,17 +257,40 @@ def getListOutofLim(combo):
     tmp = tmp[~((tmp['norm_nanoluc']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
     combo[combo['norm_ffluc']]
 
-def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
+def getColorListHex(mypalette='Paired', dmsoCol = None, n=12):
+        hexColor = [dmsoCol]
+        for i in range(n):
+            if i ==0:
+                continue
+            dmsoColtmp = matplotlib.cm.get_cmap(mypalette)(i)
+            dmsoColtmp = matplotlib.colors.rgb2hex(dmsoColtmp)
+            hexColor.append(dmsoColtmp)
+            # print(dmsoColtmp)
+
+        return hexColor
+
+def getThePlot(combo, mPath, style='scatter', allPlot = True, logScale=None, dmsoCol = None):
     '''
     logScale: either None for linear or which ever base desired 
+    mPath: correspond to the output path
 
     '''
 
     print('Generating plots.....')
     fig, ax = plt.subplots(2,2,figsize=([16, 16]))
-    combo = combineData(mPath)
     lowerlim =  min(axesParam(combo, False)[0][0], axesParam(combo, False)[1][0])# logScale cannot be 0 and should avoid artificial truncation from lower lim
+   
 
+    ##################################
+    ## Manipulate the color
+    ##################################
+
+    if dmsoCol == None:
+        dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
+        dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
+
+    hexColor = getColorListHex(mypalette='Paired', dmsoCol = dmsoCol)
+    hexColor = hexColor[:len(np.unique(combo['sample']))]
     ##################################
     ## Definition of the graph limit
     ##################################
@@ -285,19 +322,11 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
     ## Get the scatter
     ##################################
     if style == 'scatter':
-        sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
-
-        dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
-        dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
-
+        sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette=hexColor, ax=ax[1][0])
         sns.scatterplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=ax[1][1])
 
     elif style == 'kde':
-        sns.kdeplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette='Paired', ax=ax[1][0])
-
-        dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
-        dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
-
+        sns.kdeplot(data=combo, x="norm_ffluc", y="norm_nanoluc", hue="sample", alpha=0.9, palette=hexColor, ax=ax[1][0])
         sns.kdeplot(data=combo[combo['sample']=='DMSO'], x="norm_ffluc", y="norm_nanoluc", alpha=0.9, color=dmsoCol,ax=ax[1][1])
 
     ### geth the value for the red 3SD data 
@@ -336,7 +365,7 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
 
     plt.savefig(saveName+'.png')
     plt.savefig(saveName+'.pdf')
-
+    plt.close('all')
     ##################################
     ## Get the plot for individual samples
     ##################################
@@ -375,7 +404,8 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
 
         plt.savefig(saveName+'.png')
         plt.savefig(saveName+'.pdf')
-
+        plt.close('all')
+        
         ##################################
         ## Get the outlier samples
         ##################################
@@ -415,18 +445,8 @@ def getThePlot(mPath, style='scatter', allPlot = True, logScale=None):
         
         plt.savefig(saveName+'.png')
         plt.savefig(saveName+'.pdf')
+        plt.close('all')
 
-def quickConversion(tmp, myCol=None):
-    '''
-    tools to quickly convert the output of groupby
-    '''
-    tmp = tmp.reset_index()
-    if tmp.columns.nlevels > 1:
-        tmp.columns = ['_'.join(col) for col in tmp.columns] 
-    tmp.columns = tmp.columns.str.replace('[_]','')
-    if myCol:
-        tmp = tmp.rename(columns={np.nan: myCol})
-    return tmp
 
 def getCV(mPath, combo):
     '''
@@ -436,7 +456,7 @@ def getCV(mPath, combo):
     # def custCV(x):
     #     return np.std(x)/np.mean(x)
 
-    meltCombo = combo.melt(['row','col','sample'])
+    meltCombo = combo.melt(['row','col','sample', 'rowCol', 'plate'])
     tmp = meltCombo.groupby(['sample','variable']).agg({'value':[min, max, sum, 'count', np.mean, np.std]})
     a = quickConversion(tmp)
     a['CV'] = a['valuestd']/a['valuemean']
@@ -446,15 +466,62 @@ def getCV(mPath, combo):
 outlierCut = 1
 
 ## get the arguments after the file 
-mPath = sys.argv[1]
-if os.path.exists(mPath):
-    print ("Folder exist")
-    os.makedirs(mPath+os.sep+'output',exist_ok=True)
+# mPath = sys.argv[1]
+# if os.path.exists(mPath):
+#     print ("Folder exist")
+#     os.makedirs(mPath+os.sep+'output',exist_ok=True)
 
 # fileType = input('Enter the file type to be working with options (csv or xlsx):')
 print('#########################################################################################################')
 print(pyfiglet.figlet_format("HiBit",font='isometric3', width=10000))
 print('#########################################################################################################')
+
+
+
+print('')
+print('-------------------------------------------')
+
+addPlate = '1'
+folderList = []
+while addPlate == str(1):
+    print('Select the FOLDER containing the files to analyze')
+
+    tmpFol = input("Drag the FOLDER and press Enter:")
+    tmpFol = tmpFol.replace('\\','/')
+    tmpFol = tmpFol.replace('"','')
+    folderList.append(tmpFol)
+    print('')
+    print('Do additional plates need to be included and averaged with the previous one(s)')
+    addPlate = input("Answer (1: yes or 0: no): ")
+
+print('-------------------------------------------')
+print('')
+
+
+print('')
+print('-------------------------------------------')
+print('Select the color for the DMSO control group:')
+print("1: default orange ('#EC9540')")
+print("2: Brighter orange ('#F05A28')")
+print("3: enter the HEX value of the desired color Brighter orange ('#F05A28')")
+dmsoCol = input('make a selection (1, 2 or #F05A28):')
+if dmsoCol == str(1):
+    dmsoCol = '#EC9540'
+elif dmsoCol == str(2):
+    dmsoCol = '#F05A28'
+
+print('')
+print("FYI:" )
+print("color options are defaulted to ['Paired'] in color maps (link 1 below) for more color options visit:" )
+# print("in the future create a custom color map generation where user select colors then become of cmap and can be substituded from Paired")
+print('link 1: https://matplotlib.org/3.5.0/tutorials/colors/colormaps.html')
+print('link 2: https://colorbrewer2.org/')
+print('link 3: https://color.adobe.com/')
+
+# input('Press Enter to continue')
+print('-------------------------------------------')
+print('')
+
 
 print('')
 print('-------------------------------------------')
@@ -463,11 +530,6 @@ print('1: option1 - 2 groups // with 1 group DMSO on the first and last 2 column
 print('2: option1 - 12 groups // with 1 group DMSO on the first and last 2 columns and other samples being duplicated columns')
 customSampleFormat = input('make a selection (1 or 2):')
 print(customSampleFormat)
-# print("color options are defaulted to ['Paired'] in color maps (link 1 below) for more color options visit:" )
-# print("in the future create a custom color map generation where user select colors then become of cmap and can be substituded from Paired")
-# print('link 1: https://matplotlib.org/3.5.0/tutorials/colors/colormaps.html')
-# print('link 2: https://colorbrewer2.org/')
-# input('Press Enter to continue')
 print('-------------------------------------------')
 print('')
 
@@ -475,7 +537,7 @@ print('-------------------------------------------')
 print('Select the limits to be displayed on the graph options:')
 print('1: (default) option with limit set to 2 for both x and y axes')
 print("2: have the axes be fit to the data from 0 to 10'%' of maximum range for both x and y axes" )
-print("3: input your own axess value for x and y" )
+print("3: input your own axes value for x and y" )
 myCustomLimitOpt = input('Make option selection based on what is described above (eg. 1):')
 if myCustomLimitOpt == str(3):
     myCustomLimitOptX_low = input('Input the MIN value of x (eg: 0):')
@@ -496,22 +558,137 @@ print('')
 
 # mPath = input('Drag the folder containing the file to analyze:')
 # print(os.path.exists(mPath))
-print(mPath)
+print(folderList)
+
+
+
+#####@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+##### the strategy here is to 
+'''
+1. generate a full combined plate 
+2. an average plate 
+3. tracitional separate plates 
+'''
+#####@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 # print(glob.glob(mPath+os.sep+'*.*'))
-combo = combineData(mPath)
-combo.to_csv(mPath+os.sep+'output'+os.sep+'combinedOutput.csv')
-getThePlot(mPath, 'scatter')
-getThePlot(mPath, style='kde', allPlot = False)
+combPlate = []
+for i, j in enumerate(folderList):
+    os.makedirs(j+os.sep+'output',exist_ok=True)
 
-# get plot on log 2
-mylogScale = 2
-getThePlot(mPath, 'scatter', logScale=mylogScale)
-getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+    print(i,j)
+    combo = combineData(j)
+    combo['plate'] = i
 
-# get plot on log 10
-# mylogScale = 10
-# getThePlot(mPath, 'scatter', logScale=mylogScale)
-# getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+    combo.to_csv(j+os.sep+'output'+os.sep+'combinedOutput.csv')
+    getThePlot(combo, mPath=j, style='scatter', dmsoCol=dmsoCol)
+    getThePlot(combo, mPath=j, style='kde', allPlot = False, dmsoCol=dmsoCol)
 
-getCV(mPath, combo)
+    # get plot on log 2
+    mylogScale = 2
+    getThePlot(combo, mPath=j, style='scatter', logScale=mylogScale, dmsoCol=dmsoCol)
+    getThePlot(combo, mPath=j, style='kde', allPlot = False, logScale=mylogScale, dmsoCol=dmsoCol)
+
+    # get plot on log 10
+    # mylogScale = 10
+    # getThePlot(mPath, 'scatter', logScale=mylogScale)
+    # getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+    getCV(j, combo)
+
+    combPlate.append(combo)
+
+
+#####@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+##### the strategy here is to 
+'''
+1. generate a full combined plate 
+2. an average plate 
+3. tracitional separate plates 
+'''
+#####@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+if len(folderList)>1:
+    # this plate can be used to get the combined out put
+    combPlate = pd.concat(combPlate)
+    # combPlate['locTag'] = combPlate['rowCol']+'_'+combPlate['plate'].astype(str)
+
+    # this plate can be used as the average plate
+    combPlateM = pd.melt(combPlate, id_vars = ['row', 'col', 'sample', 'rowCol', 'plate'], 
+        value_vars = ['value_ffluc', 'norm_ffluc', 'value_nanoluc', 'norm_nanoluc'])
+    combPlateM_tmp = combPlateM.groupby(['row', 'col', 'sample', 'rowCol', 'variable']).agg({'value':np.mean})
+    combPlateM_tmp = quickConversion(combPlateM_tmp)
+    combPlateM_tmp = pd.pivot_table(combPlateM_tmp, index=['row', 'col', 'sample', 'rowCol'], values='value', columns=['variable'])
+    combPlateM_tmp = quickConversion(combPlateM_tmp, option=0)
+
+
+    ##################################################
+    ##### aggregated output 
+    ##################################################
+    # for ploting this specific case this plate can be used to get the combined out put
+    aggOut = folderList[0]+os.sep+'output_aggregated' # for aggregated output file path
+    os.makedirs(aggOut,exist_ok=True)
+    os.makedirs(aggOut+os.sep+'output',exist_ok=True)
+    combPlate['plate'] = 0 # remake the palte to 0
+    combPlate = combPlate.reset_index(drop=True)
+    combPlate.to_csv(aggOut+os.sep+'combinedOutput.csv')
+    getThePlot(combPlate, mPath=aggOut, style='scatter', dmsoCol=dmsoCol)
+    getThePlot(combPlate, mPath=aggOut, style='kde', allPlot = False, dmsoCol=dmsoCol)
+
+    # get plot on log 2
+    mylogScale = 2
+    getThePlot(combPlate, mPath=aggOut, style='scatter', logScale=mylogScale, dmsoCol=dmsoCol)
+    getThePlot(combPlate, mPath=aggOut, style='kde', allPlot = False, logScale=mylogScale, dmsoCol=dmsoCol)
+
+    # get plot on log 10
+    # mylogScale = 10
+    # getThePlot(mPath, 'scatter', logScale=mylogScale)
+    # getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+    getCV(aggOut, combPlate)
+
+
+    ##################################################
+    ##### averaged output 
+    ##################################################
+    avgOut = folderList[0]+os.sep+'ouput_averaged'
+    os.makedirs(avgOut,exist_ok=True)
+    os.makedirs(avgOut+os.sep+'output',exist_ok=True)
+    combPlateM_tmp.to_csv(avgOut+os.sep+'combinedOutput.csv')
+    getThePlot(combPlateM_tmp, mPath=avgOut, style='scatter', dmsoCol=dmsoCol)
+    getThePlot(combPlateM_tmp, mPath=avgOut, style='kde', allPlot = False, dmsoCol=dmsoCol)
+
+    # get plot on log 2
+    mylogScale = 2
+    getThePlot(combPlateM_tmp, mPath=avgOut, style='scatter', logScale=mylogScale, dmsoCol=dmsoCol)
+    getThePlot(combPlateM_tmp, mPath=avgOut, style='kde', allPlot = False, logScale=mylogScale, dmsoCol=dmsoCol)
+
+    # get plot on log 10
+    # mylogScale = 10
+    # getThePlot(mPath, 'scatter', logScale=mylogScale)
+    # getThePlot(mPath, style='kde', allPlot = False, logScale=mylogScale)
+    combPlateM_tmp['plate'] = 0
+    getCV(avgOut, combPlateM_tmp)
+
+
+
+
+print('')
+print('')
+print('The outputs for the individual plates are located in their respective folders')
+for i in folderList:
+    print('     *'+i+os.sep+'output')
+
+if len(folderList)<1:
+    print('The ouputs for the averaged or aggregated plate are save here')
+    print('     *'+folderList[0]+os.sep+'ouput_averaged')
+    print('     *'+folderList[0]+os.sep+'output_aggregated')
+
+print('')
+print('#########################################################################################################')
+print(pyfiglet.figlet_format("Bye Bye!",font='isometric3', width=10000))
+print('#########################################################################################################')
+print('')
+
+input('press Sapce and Enter to exit')
+
+
 # 'C:/Users/Windows/Desktop/CamiloTest'
