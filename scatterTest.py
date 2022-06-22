@@ -35,11 +35,12 @@ import matplotlib
 from pathlib import Path
 import argparse
 import sys
+import subprocess
 try:
     import pyfiglet
 except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'pyfiglet'])
-
+    import pyfiglet
 #### LOAD set of custom functions required for further processing
 def quickConversion(tmp, myCol=None, option=1):
     if option ==0:
