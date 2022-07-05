@@ -9,8 +9,8 @@ especially the get file function
 
 Important all the STD is based on the STD from the 
 
+## TODO: THIS IS A MUST  + CLEAN UP includes some of the method in Class
 ## TODO: try to set this up with input instead or argparse
-## TODO: includes some of the method in Class
 ## TODO: integrate some options
 ## TODO: comments the code better
 ## TODO: update github
@@ -31,6 +31,7 @@ import numpy as np
 import glob
 import os
 import string
+import copy
 import matplotlib
 from pathlib import Path
 import argparse
@@ -53,7 +54,6 @@ def quickConversion(tmp, myCol=None, option=1):
         if myCol:
             tmp = tmp.rename(columns={np.nan: myCol})
     return tmp
-
 
 def createAplate():
     '''
@@ -235,28 +235,82 @@ def getPlateFormat(comboData, myVal, mPath):
 
     return tmp
 
-def getListOutofLim(combo):
+def getListOutofLim(combo, hexColor, mPath):
     '''
     get the list of elements outside the bos 
     '''
     ### geth the value for the red 3SD data 
+   
+    saveName = mPath+os.sep+'output'+os.sep
     ###---------------------------------------------------------------------------------
     xMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_ffluc']) #combo['norm_ffluc'] - original value to look at SD across the entire plate
     yMark = stdDevbound(combo.loc[combo['sample']=='DMSO','norm_nanoluc'])#combo['norm_nanoluc']  - original value to look at SD across the entire plate
     ###---------------------------------------------------------------------------------
-    tmp = combo[~((combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1]))]
-
-
+    
+    ### substraction to get everyting EXCEPT the center areas
     xmask = (combo['norm_ffluc']>xMark[0]) & (combo['norm_ffluc']<xMark[1])
     ymask = (combo['norm_nanoluc']>yMark[0]) & (combo['norm_nanoluc']<yMark[1])
     tmp = combo[~(xmask & ymask)]
 
+
+    ## assign different area for downstream plotting for samples out of the limit
+    tmpCat = copy.copy(combo)
+    tmpCat.loc[(combo['norm_nanoluc']<yMark[0]) & (combo['norm_ffluc']>xMark[1]),'zone'] = 2
+    tmpCat.loc[(combo['norm_nanoluc']<yMark[0]) & (combo['norm_ffluc']<xMark[1]),'zone'] = 1
+    tmpCat.loc[(combo['norm_nanoluc']<yMark[0]) & (combo['norm_ffluc']<xMark[0]),'zone'] = 0
+
+    tmpCat.loc[(combo['norm_nanoluc']>yMark[1]) & (combo['norm_ffluc']>xMark[1]),'zone'] = 8
+    tmpCat.loc[(combo['norm_nanoluc']>yMark[1]) & (combo['norm_ffluc']<xMark[1]),'zone'] = 7
+    tmpCat.loc[(combo['norm_nanoluc']>yMark[1]) & (combo['norm_ffluc']<xMark[0]),'zone'] = 6
+
+    tmpCat.loc[ymask & (combo['norm_ffluc']>xMark[1]),'zone'] = 5
+    tmpCat.loc[ymask & (combo['norm_ffluc']<xMark[1]),'zone'] = 4
+    tmpCat.loc[ymask & (combo['norm_ffluc']<xMark[0]),'zone'] = 3
+
+
+    ### substraction to get everyting EXCEPT the center areas
+    figure_mosaic =  '''
+    AABC
+    AABC
+    '''
+
+    fig, axes = plt.subplot_mosaic(mosaic=figure_mosaic, figsize=(11,5))
+    #for label, ax in axes.items():
+    #   ax.text(0.1,0.1, label, color='blue')
+
+    for k in [1/3,2/3]:
+        axes['A'].axvline(k, linestyle='dashed', color='red')
+        axes['A'].axhline(k, linestyle='dashed', color='red')
+    axes['A'].set_ylabel('nanoluc')
+    axes['A'].set_xlabel('ffluc')
+
+    ### enumerate a list 
+    tmpall = []
+    lst = [1/6, 3/6, 5/6]
+    for k in lst:
+        for j in lst:
+            tmpl = [j,k]
+            tmpall.append(tmpl)
+
+    for i, j in enumerate(tmpall):
+        # print(i, j)
+        axes['A'].text(j[0],j[1], 'zone'+str(i), color='blue')
+
+
+    census = quickConversion(tmpCat.groupby(['sample','zone']).agg({'zone':['count']}))
+    censusTot = quickConversion(census.groupby(['sample']).agg({'zonecount':['sum']}))
+    census = pd.merge(census, censusTot, on = ['sample'])
+    census['ratio'] = census['zonecount']/census['zonecountsum']
+
+    sns.barplot(x="zone", y="zonecount", hue="sample", data=census, ax = axes['B'], palette=hexColor)
+    sns.barplot(x="zone", y="ratio", hue="sample", data=census, ax = axes['C'], palette=hexColor)
+    plt.tight_layout()
+    plt.savefig(saveName+'samplesCounts.png')
+    plt.savefig(saveName+'samplesCounts.pdf')
+    plt.close('all')
+
     return tmp
 
-
-
-    tmp = tmp[~((tmp['norm_nanoluc']>yMark[0]) & (tmp['norm_ffluc']<yMark[1]))]
-    combo[combo['norm_ffluc']]
 
 def getColorListHex(mypalette='Paired', dmsoCol = None, n=12):
         hexColor = [dmsoCol]
@@ -417,7 +471,7 @@ def getThePlot(combo, mPath, style='scatter', allPlot = True, logScale=None, dms
             ax.axvline(xMark[k], linestyle='dashed', color='red')
             ax.axhline(yMark[k], linestyle='dashed', color='red')
         
-        tmp = getListOutofLim(combo)
+        tmp = getListOutofLim(combo, hexColor, mPath)
         sns.scatterplot(data=combo, x="norm_ffluc", y="norm_nanoluc", s=80, color='black', alpha=0.2)
         sns.scatterplot(data=tmp, x="norm_ffluc", y="norm_nanoluc", s=80, color='red', alpha=0.8)
         for i, j in tmp.iterrows():
@@ -448,20 +502,40 @@ def getThePlot(combo, mPath, style='scatter', allPlot = True, logScale=None, dms
         plt.savefig(saveName+'.pdf')
         plt.close('all')
 
-
-def getCV(mPath, combo):
+def getCV(mPath, combo, dmsoCol = None):
     '''
     Function to generate and display CV by group 
     CV being defined as std/mean
     '''
     # def custCV(x):
     #     return np.std(x)/np.mean(x)
+    saveName = mPath+os.sep+'output'+os.sep
 
     meltCombo = combo.melt(['row','col','sample', 'rowCol', 'plate'])
     tmp = meltCombo.groupby(['sample','variable']).agg({'value':[min, max, sum, 'count', np.mean, np.std]})
     a = quickConversion(tmp)
     a['CV'] = a['valuestd']/a['valuemean']
-    a.to_csv(mPath+os.sep+'output'+os.sep+'Samples_stats.csv')
+    a.to_csv(saveName+'Samples_stats.csv')
+
+    ##################################
+    ## Manipulate the color
+    ##################################
+
+    if dmsoCol == None:
+        dmsoCol = matplotlib.cm.get_cmap('Paired')(0)
+        dmsoCol = matplotlib.colors.rgb2hex(dmsoCol)
+
+    hexColor = getColorListHex(mypalette='Paired', dmsoCol = dmsoCol)
+    hexColor = hexColor[:len(np.unique(combo['sample']))]
+    fig, ax = plt.subplots(figsize=(3,6))
+
+    tmpCv = a[a['variable'].str.contains('norm')] # plot CV only for the normalized data 
+    sns.barplot(x="variable", y="CV", hue="sample", data=tmpCv, ax = ax, palette=hexColor)
+    ax.set_ylim(0,0.5)
+    plt.tight_layout()
+    plt.savefig(saveName+'CVplot.png')
+    plt.savefig(saveName+'CVplot.pdf')
+    plt.close('all')
 
 ## default or set user inputs criteria
 outlierCut = 1
